@@ -1,6 +1,9 @@
 /*
    Copyright 2018 Ilya Epifanov
 
+   Modified in 2026 by Sergey Matyukevich: ported to embedded-hal 1.0,
+   bitflags 2 and Rust edition 2024.
+
    Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
    http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
    http://opensource.org/licenses/MIT>, at your option. This file may not be
@@ -18,80 +21,66 @@ The device has an I²C interface.
 
 ## Usage
 
-Import this crate and an `embedded_hal` implementation:
+The driver takes ownership of any I²C bus implementing the [`embedded_hal::i2c::I2c`]
+trait. Obtaining that bus is platform specific, so instantiate the device, initialize
+it, and set a frequency on one of the outputs:
 
 ```
-extern crate stm32f103xx_hal as hal;
-extern crate si5351;
+use embedded_hal::i2c::I2c;
+use si5351::{ClockOutput, CrystalLoad, Error, Si5351, Si5351Device, PLL};
+
+fn setup<I2C: I2c>(i2c: I2C) -> Result<Si5351Device<I2C>, Error> {
+    let mut clock = Si5351Device::new(i2c, false, 25_000_000);
+    clock.init(CrystalLoad::_10)?;
+    clock.set_frequency(PLL::A, ClockOutput::Clk0, 14_175_000)?;
+    Ok(clock)
+}
 ```
 
-Initialize I²C bus (differs between `embedded_hal` implementations):
+Or, if you have an [Adafruit module], you can use shortcut functions to initialize it:
 
-```no_run
-# extern crate stm32f103xx_hal as hal;
-use hal::i2c::I2c;
-type I2C = ...;
+```
+use embedded_hal::i2c::I2c;
+use si5351::{Error, Si5351, Si5351Device};
 
-# fn main() {
-let i2c: I2C = initialize_i2c();
-# }
+fn setup<I2C: I2c>(i2c: I2C) -> Result<Si5351Device<I2C>, Error> {
+    let mut clock = Si5351Device::new_adafruit_module(i2c);
+    clock.init_adafruit_module()?;
+    Ok(clock)
+}
 ```
 
-Then instantiate the device:
+If your bus is shared with other devices, wrap it in one of the bus sharing
+primitives from [`embedded-hal-bus`] and hand the resulting proxy to
+[`Si5351Device::new`].
 
-```no_run
-# extern crate stm32f103xx_hal as hal;
-# extern crate si5351;
-use si5351;
-use si5351::{Si5351, Si5351Device};
-
-# fn main() {
-let mut clock = Si5351Device<I2C>::new(i2c, false, 25_000_000);
-clock.init(si5351::CrystalLoad::_10)?;
-# }
-```
-
-Or, if you have an [Adafruit module], you can use shortcut functions to initializate it:
-```no_run
-# extern crate stm32f103xx_hal as hal;
-# extern crate si5351;
-use si5351;
-use si5351::{Si5351, Si5351Device};
-
-# fn main() {
-let mut clock = Si5351Device<I2C>::new_adafruit_module(i2c);
-clock.init_adafruit_module()?;
-# }
-```
-
-And set frequency on one of the outputs:
-
-```no_run
-use si5351;
-
-clock.set_frequency(si5351::PLL::A, si5351::ClockOutput::Clk0, 14_175_000)?;
-```
-
-[Si5351]: https://www.silabs.com/documents/public/data-sheets/Si5351-B.pdf
-[`embedded-hal`]: https://github.com/japaric/embedded-hal
+[Si5351]: https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/data-sheets/Si5351-B.pdf
+[`embedded-hal`]: https://github.com/rust-embedded/embedded-hal
+[`embedded-hal-bus`]: https://docs.rs/embedded-hal-bus
 [Adafruit module]: https://www.adafruit.com/product/2045
 */
 //#![deny(missing_docs)]
-#![deny(warnings)]
 #![no_std]
 
-#[macro_use]
-extern crate bitflags;
-use embedded_hal as hal;
+use bitflags::bitflags;
+use embedded_hal::i2c::I2c;
 
-use core::mem;
-use crate::hal::blocking::i2c::{Write, WriteRead};
-
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Error {
     CommunicationError,
     InvalidParameter,
 }
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::CommunicationError => f.write_str("I²C communication error"),
+            Error::InvalidParameter => f.write_str("invalid parameter"),
+        }
+    }
+}
+
+impl core::error::Error for Error {}
 
 #[derive(Debug, Copy, Clone)]
 pub enum CrystalLoad {
@@ -238,6 +227,7 @@ impl Register {
 }
 
 bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct DeviceStatusBits: u8 {
         const SYS_INIT = 0b1000_0000;
         const LOL_B = 0b0100_0000;
@@ -247,6 +237,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     struct CrystalLoadBits: u8 {
         const RESERVED = 0b00_010010;
         const CL_MASK = 0b11_000000;
@@ -257,6 +248,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     struct ClockControlBits: u8 {
         const CLK_PDN = 0b1000_0000;
         const MS_INT = 0b0100_0000;
@@ -276,6 +268,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     struct PLLResetBits: u8 {
         const PLLB_RST = 0b1000_0000;
         const PLLA_RST = 0b0010_0000;
@@ -369,26 +362,29 @@ pub trait Si5351 {
     fn select_clock_pll(&mut self, clocl: ClockOutput, pll: PLL);
 }
 
-impl<I2C, E> Si5351Device<I2C>
-    where
-        I2C: WriteRead<Error=E> + Write<Error=E>,
+impl<I2C> Si5351Device<I2C>
+where
+    I2C: I2c,
 {
     /// Creates a new driver from a I2C peripheral
     pub fn new(i2c: I2C, address_bit: bool, xtal_freq: u32) -> Self {
-        let si5351 = Si5351Device {
+        Si5351Device {
             i2c,
-            address: ADDRESS | if address_bit { 1 } else { 0 },
+            address: ADDRESS | u8::from(address_bit),
             xtal_freq,
             clk_enabled_mask: 0,
             ms_int_mode_mask: 0,
             ms_src_mask: 0,
-        };
-
-        si5351
+        }
     }
 
     pub fn new_adafruit_module(i2c: I2C) -> Self {
         Si5351Device::new(i2c, false, 25_000_000)
+    }
+
+    /// Releases the I2C peripheral back to the caller
+    pub fn release(self) -> I2C {
+        self.i2c
     }
 
     fn write_ms_config<MS: FractionalMultisynth + Copy>(&mut self, ms: MS, int: u16, frac_num: u32, frac_denom: u32, r_div: OutputDivider) -> Result<(), Error> {
@@ -448,24 +444,31 @@ impl<I2C, E> Si5351Device<I2C>
     }
 
     fn read_register(&mut self, reg: Register) -> Result<u8, Error> {
-        let mut buffer: [u8; 1] = unsafe { mem::uninitialized() };
-        self.i2c.write_read(self.address, &[reg.addr()], &mut buffer).map_err(i2c_error)?;
+        let mut buffer = [0u8; 1];
+        self.i2c
+            .write_read(self.address, &[reg.addr()], &mut buffer)
+            .map_err(i2c_error)?;
         Ok(buffer[0])
     }
 
     fn write_register(&mut self, reg: Register, byte: u8) -> Result<(), Error> {
-        self.i2c.write(self.address, &[reg.addr(), byte]).map_err(i2c_error)
+        self.i2c
+            .write(self.address, &[reg.addr(), byte])
+            .map_err(i2c_error)
     }
 
     fn write_synth_registers<MS: FractionalMultisynth>(&mut self, ms: MS, params: [u8; 8]) -> Result<(), Error> {
-        self.i2c.write(self.address, &[ms.base_addr(),
-            params[0], params[1], params[2], params[3], params[4], params[5], params[6], params[7]
-        ]).map_err(i2c_error)
+        self.i2c
+            .write(self.address, &[ms.base_addr(),
+                params[0], params[1], params[2], params[3], params[4], params[5], params[6], params[7]
+            ])
+            .map_err(i2c_error)
     }
 }
 
-impl<I2C, E> Si5351 for Si5351Device<I2C> where
-    I2C: WriteRead<Error=E> + Write<Error=E>
+impl<I2C> Si5351 for Si5351Device<I2C>
+where
+    I2C: I2c,
 {
     fn init_adafruit_module(&mut self) -> Result<(), Error> {
         self.init(CrystalLoad::_10)
@@ -599,13 +602,11 @@ impl<I2C, E> Si5351 for Si5351Device<I2C> where
     }
 
     fn setup_pll(&mut self, pll: PLL, mult: u8, num: u32, denom: u32) -> Result<(), Error> {
-        if mult < 15 || mult > 90 {
+        if !(15..=90).contains(&mult) {
             return Err(Error::InvalidParameter);
         }
 
         self.write_ms_config(pll.multisynth(), mult.into(), num, denom, OutputDivider::Div1)?;
-
-        if mult % 2 == 0 && num == 0 {} else {}
 
         Ok(())
     }
@@ -615,7 +616,7 @@ impl<I2C, E> Si5351 for Si5351Device<I2C> where
     }
 
     fn setup_multisynth(&mut self, ms: Multisynth, div: u16, num: u32, denom: u32, r_div: OutputDivider) -> Result<(), Error> {
-        if div < 6 || div > 1800 {
+        if !(6..=1800).contains(&div) {
             return Err(Error::InvalidParameter);
         }
 

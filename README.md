@@ -1,12 +1,17 @@
 # si5351
 
-[![docs](https://docs.rs/si5351/badge.svg)](https://docs.rs/si5351)
-[![crates.io](https://img.shields.io/crates/v/si5351.svg)](https://crates.io/crates/si5351)
-[![ci](https://travis-ci.org/ilya-epifanov/si5351.svg)](https://travis-ci.org/ilya-epifanov/si5351)
+A platform agnostic driver for the Silicon Labs Si5351 clock generator, built on
+[`embedded-hal`](https://github.com/rust-embedded/embedded-hal) 1.0.
 
-## Documentation
+This is a modified fork of [ilya-epifanov/si5351](https://github.com/ilya-epifanov/si5351).
+The original crate targeted `embedded-hal` 0.2, `bitflags` 1 and Rust edition 2018;
+this fork has been ported to `embedded-hal` 1.0, `bitflags` 2 and Rust edition 2024.
+See the git history for the full list of changes.
 
-On [docs.rs](https://docs.rs/si5351)
+The Si5351 datasheet and application note AN619 (which documents the MultiSynth
+divider equations this driver implements) are not redistributed here — download
+them from
+[Skyworks](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/data-sheets/Si5351-B.pdf).
 
 ## License
 
@@ -16,6 +21,9 @@ Licensed under either of
  * MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
+
+Modifications made in this fork are released under the same dual license. The
+original copyright notice (Copyright 2018 Ilya Epifanov) is retained.
 
 ### Contribution
 

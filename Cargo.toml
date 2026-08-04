@@ -3,17 +3,17 @@ name = "si5351"
 version = "0.2.0"
 keywords = ["embedded", "no-std", "embedded-hal-driver", "clock", "ham-radio"]
 categories = ["embedded", "no-std"]
-authors = ["Ilya Epifanov <elijah.epifanov@gmail.com>"]
+authors = [
+    "Ilya Epifanov <elijah.epifanov@gmail.com>",
+    "Sergey Matyukevich <geomatsi@gmail.com>",
+]
 description = "A platform agnostic driver for the Si5351 clock generator"
 license = "MIT OR Apache-2.0"
-exclude = [".travis.yml", ".gitignore"]
-repository = "https://github.com/ilya-epifanov/si5351"
-edition = "2018"
-
-[badges.travis-ci]
-branch = "master"
-repository = "jamwaffles/ssd1306"
+exclude = [".gitignore", ".claude", ".github"]
+repository = "https://github.com/geomatsi/si5351"
+edition = "2024"
+rust-version = "1.85"
 
 [dependencies]
-embedded-hal = "0.2.2"
-bitflags = "1.0"
+embedded-hal = "1.0.0"
+bitflags = "2.13.1"
