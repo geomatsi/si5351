@@ -9,7 +9,7 @@ authors = [
 ]
 description = "A platform agnostic driver for the Si5351 clock generator"
 license = "MIT OR Apache-2.0"
-exclude = [".gitignore", ".claude", ".github"]
+exclude = [".gitignore", ".claude", ".github", "examples/blue-pill/target"]
 repository = "https://github.com/geomatsi/si5351"
 edition = "2024"
 rust-version = "1.85"

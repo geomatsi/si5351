@@ -1,0 +1,9 @@
+# Everything in this crate is for one board, so it is the default target.
+# The linker script comes from build.rs, not from rustflags here: a RUSTFLAGS
+# in the environment would replace anything set here and silently break the
+# link.
+[build]
+target = "thumbv7m-none-eabi"
+
+[target.thumbv7m-none-eabi]
+runner = "probe-rs run --chip STM32F103C8"

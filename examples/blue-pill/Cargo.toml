@@ -1,0 +1,77 @@
+# Its own workspace: this crate builds for thumbv7m and the library above it
+# builds and tests on the host, so they must not share a target directory or a
+# lockfile.
+[workspace]
+
+[package]
+name = "si5351-blue-pill"
+description = "Si5351 driver examples for an STM32F103 Blue Pill"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# A firmware crate: there is no test harness and no bench harness on the
+# target, so those artifacts are off. Without this, `--all-targets` tries to
+# build them and fails on the missing `test` crate.
+[lib]
+test = false
+bench = false
+
+[[bin]]
+name = "example1"
+test = false
+bench = false
+
+[[bin]]
+name = "example2"
+test = false
+bench = false
+
+[[bin]]
+name = "example3"
+test = false
+bench = false
+
+[[bin]]
+name = "example4"
+test = false
+bench = false
+
+[[bin]]
+name = "example5"
+test = false
+bench = false
+
+[[bin]]
+name = "example6"
+test = false
+bench = false
+
+[[bin]]
+name = "hw_checks"
+test = false
+bench = false
+
+[dependencies]
+si5351 = { path = "../.." }
+
+cortex-m = { version = "0.7.8", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.6"
+stm32f1xx-hal = { version = "0.11.0", features = ["stm32f103", "medium"] }
+
+rtt-target = "0.6.2"
+panic-rtt-target = "0.2.0"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+debug = true
+
+# 64K of flash does not fit an unoptimised build of anything that prints.
+[profile.dev]
+opt-level = "z"
+lto = true
+debug = true

@@ -55,6 +55,25 @@ jobs:
           targets: ${{ matrix.target }}
       - run: cargo build --locked --target ${{ matrix.target }}
 
+  # The examples are a separate crate: they are firmware for one board, so they
+  # cannot be built or linted from the library's host jobs. Its .cargo/config
+  # already defaults to thumbv7m, and its linker script comes from build.rs so
+  # that the RUSTFLAGS above cannot displace it.
+  examples:
+    name: Blue Pill examples
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/blue-pill
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7m-none-eabi
+          components: clippy
+      - run: cargo build --locked --release
+      - run: cargo clippy --locked --all-targets
+
   # Since Cargo.lock is committed, the jobs above never see a new dependency
   # release. This one ignores the lockfile so a breaking upstream release shows
   # up here instead of in a user's build. Advisory: it does not gate merges.
