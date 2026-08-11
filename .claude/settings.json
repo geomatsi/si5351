@@ -10,7 +10,22 @@
       "Bash(cargo search *)",
       "Bash(cargo --version)",
       "Bash(rustc --version)",
-      "Bash(rustup target *)"
+      "Bash(rustup target *)",
+      "Bash(rustup show *)",
+      "Bash(rustup toolchain *)",
+
+      "Bash(export RUSTFLAGS=\"-D warnings\" RUSTDOCFLAGS=\"-D warnings\")",
+      "Bash(export RUSTFLAGS=\"-D warnings\")",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo *)",
+      "Bash(RUSTDOCFLAGS=\"-D warnings\" cargo *)",
+
+      "Bash(size *)",
+      "Bash(readelf *)",
+      "Bash(pdftotext *)",
+
+      "Bash(git diff *)",
+      "Bash(grep *)",
+      "Bash(command -v *)"
     ]
   }
 }
