@@ -65,6 +65,10 @@ If your bus is shared with other devices, wrap it in one of the bus sharing
 primitives from [`embedded-hal-bus`] and hand the resulting proxy to
 [`Si5351Device::new`].
 
+Output accuracy is the crystal's, typically 20 to 30 ppm. [`calibrate`] turns a
+count of any output, gated against a known reference, into a correction for any
+other — the error is fractional and shared across the device.
+
 [Si5351]: https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/data-sheets/Si5351-B.pdf
 [`embedded-hal`]: https://github.com/rust-embedded/embedded-hal
 [`embedded-hal-bus`]: https://docs.rs/embedded-hal-bus
@@ -72,6 +76,8 @@ primitives from [`embedded-hal-bus`] and hand the resulting proxy to
 */
 //#![deny(missing_docs)]
 #![no_std]
+
+pub mod calibrate;
 
 use bitflags::bitflags;
 use embedded_hal::i2c::I2c;
