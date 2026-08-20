@@ -165,3 +165,27 @@ ceiling from one and the floor from the other, so both halves need resolving.
       while the part goes to 8 kHz
 - [ ] the check also prints what 160 and 200 MHz do; 150 MHz is the top, per
       check 8
+
+---
+
+## Calibration
+
+### 11. The calibration loop — `example7`, *needs a disciplined reference*
+
+`si5351::calibrate` turns a gated count into a correction for any output. The
+loop is exercised by `example7` rather than by `hw_checks`, since it needs a
+counter wired to PB3 — see that crate's `src/lib.rs` for the extra wire.
+
+- [ ] as it stands, the gate is the Blue Pill's own 8 MHz crystal, so the
+      readings are the difference between two ±30 ppm parts. Confirm the loop
+      converges at all and that the total it reports is stable round to round;
+      a total that wanders by more than a few ppm is the gate, not the driver
+- [ ] gate against a GPS PPS instead — a rising edge to start and the next to
+      stop, in place of the delay in `Gate::count` — and the total becomes the
+      Si5351 crystal's real error. That is the number worth keeping
+- [ ] with a real reference, check the payoff: clk0 is asked for 15 MHz
+      pre-distorted by the correction clk1 measured, and should land within the
+      counter's resolution of 15 MHz. This is the whole claim of the module —
+      one measurement corrects an output that was never measured
+- [ ] `calibrate::correct` linearises, leaving `freq * (ppb/1e9)^2`: 54 mHz at
+      62 ppm on 20 m, and below a millihertz once the loop has closed

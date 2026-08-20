@@ -9,6 +9,17 @@
 //! reference such as a GPS PPS, and use the result to pre-distort a target the
 //! counter never sees.
 //!
+//! Three frequencies are easily confused, so throughout this module:
+//!
+//! - the **nominal** is what you want on the pin,
+//! - the **dial** is what the part is asked for — [`correct`] turns a nominal
+//!   into a dial, and it is the argument to [`set_frequency`],
+//! - the **count** is what the pin actually did.
+//!
+//! Without a correction the dial *is* the nominal, and the count is off by the
+//! crystal's error. With one, the dial sits off the nominal by that same error
+//! the other way and the count lands on the nominal.
+//!
 //! ```
 //! use si5351::{calibrate, Frequency};
 //!
@@ -22,11 +33,16 @@
 //! assert_eq!(dial.as_hz(), 14_096_225);
 //! ```
 //!
+//! A loop that re-measures after each correction sees only the error still
+//! left; the whole of it is in the dial. [`correction_ppb`] reads it back out.
+//!
 //! Resolution is one count in `nominal * periods`: 100 ppb for a one-second
 //! gate on 10 MHz, ten times finer over ten seconds. A longer gate buys
 //! resolution and nothing else — it cannot reach drift that happens after the
 //! correction is applied, and it returns a mean over a wider window that is
 //! staler by the time it is used.
+//!
+//! [`set_frequency`]: crate::Si5351::set_frequency
 
 use crate::Frequency;
 
@@ -38,9 +54,10 @@ pub const MAX_PLAUSIBLE_PPB: i64 = 200_000;
 
 /// The fractional error of a gated count, in parts per billion.
 ///
-/// `ticks` is what the counter saw while gated over `periods` whole intervals
-/// of the reference, counting an output the part was asked to put at `nominal`.
-/// Positive means the part runs fast.
+/// `ticks` is what the counter saw over `periods` whole intervals of the
+/// reference, and `nominal` is what that count is judged against. Positive
+/// means the pin ran fast. Once the dial has been corrected this is the error
+/// still left, not the crystal's.
 ///
 /// ```
 /// use si5351::{calibrate, Frequency};
@@ -86,12 +103,15 @@ pub fn as_ppm(ppb: i64) -> i64 {
     ppb / 1_000
 }
 
-/// Pre-distorts `freq` so the part emits it despite `ppb` of crystal error.
+/// Turns a nominal into a dial: `freq` less `ppb` of itself.
 ///
-/// Ask for the result instead of `freq` and the output lands on `freq`. The
-/// correction is linearised, leaving a residual of `freq * (ppb/1e9)^2` — 54 mHz
-/// at 62 ppm on 20 m, four orders below the error being removed, and nil in a
-/// loop that re-measures after applying it.
+/// Ask the part for the result instead of `freq` and a part running `ppb` fast
+/// puts the pin on `freq`. Handed a dial that already carries a correction it
+/// folds the two together, which is what a converging loop does.
+///
+/// The correction is linearised, leaving a residual of `freq * (ppb/1e9)^2` —
+/// 54 mHz at 62 ppm on 20 m, four orders below the error being removed, and
+/// nil in a loop that re-measures after applying it.
 ///
 /// ```
 /// use si5351::{calibrate, Frequency};
@@ -116,11 +136,141 @@ pub fn correct(freq: Frequency, ppb: i64) -> Frequency {
     Frequency::from_microhz((uhz - (q * ppb + r * ppb / 1_000_000_000)) as u64)
 }
 
+/// The correction a dial carries, in parts per billion.
+///
+/// `dial` is what the part was asked for, `nominal` what is wanted on the pin;
+/// the answer is the [`correct`] call that turns the second into the first,
+/// exactly, anywhere inside [`MAX_PLAUSIBLE_PPB`]. Positive means the dial
+/// sits below the nominal, which is what a fast part is asked for.
+///
+/// A loop that re-measures reads only the error still left at each step. The
+/// whole of it is in the dial, and this is how to get it back out and keep it.
+///
+/// ```
+/// use si5351::{calibrate, Frequency};
+///
+/// let nominal = Frequency::from_hz(10_000_000);
+///
+/// // A coarse correction and a trim, as a converging loop would apply them.
+/// let dial = calibrate::correct(nominal, 62_000);
+/// let dial = calibrate::correct(dial, -400);
+///
+/// assert_eq!(calibrate::correction_ppb(dial, nominal), 61_600);
+/// ```
+///
+/// # Panics
+///
+/// If `nominal` is zero.
+pub fn correction_ppb(dial: Frequency, nominal: Frequency) -> i64 {
+    let nominal = nominal.as_microhz() as i64;
+    let diff = nominal - dial.as_microhz() as i64;
+    let (sign, diff) = if diff < 0 { (-1, -diff) } else { (1, diff) };
+
+    // `diff * 1e9 / nominal`, long divided in three rounds of 1000: the product
+    // overflows i64 here, and i128 would pull in the division helpers `correct`
+    // avoids. Each round scales a remainder below `nominal`, at most 9e14 µHz.
+    let mut ppb = diff / nominal;
+    let mut rem = diff % nominal;
+
+    for _ in 0..3 {
+        ppb = ppb * 1_000 + rem * 1_000 / nominal;
+        rem = rem * 1_000 % nominal;
+    }
+
+    // Rounding the last digit, not truncating it, is what makes the inverse
+    // exact rather than a ppb light.
+    if 2 * rem >= nominal {
+        ppb += 1;
+    }
+
+    sign * ppb
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const NOMINAL: Frequency = Frequency::from_hz(10_000_000);
+
+    #[test]
+    fn correction_ppb_inverts_correct() {
+        for hz in [500_000u32, 1_000_000, 10_000_000, 14_097_100, 200_000_000] {
+            for ppb in [
+                -200_000i64,
+                -62_000,
+                -1,
+                0,
+                1,
+                300,
+                62_000,
+                199_999,
+                200_000,
+            ] {
+                let freq = Frequency::from_hz(hz);
+
+                assert_eq!(
+                    correction_ppb(correct(freq, ppb), freq),
+                    ppb,
+                    "{hz} Hz, {ppb} ppb"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn correction_ppb_matches_a_128_bit_reference() {
+        let nominal = Frequency::from_hz(14_097_100);
+
+        for offset in [
+            -4_000_000_000i64,
+            -874_020_200,
+            -1,
+            0,
+            1,
+            874_020_200,
+            4_000_000_000,
+        ] {
+            let dial = Frequency::from_microhz((nominal.as_microhz() as i64 - offset) as u64);
+
+            let n = nominal.as_microhz() as i128;
+            let diff = n - dial.as_microhz() as i128;
+            let want = ((diff * 2_000_000_000 + n * diff.signum()) / (2 * n)) as i64;
+
+            assert_eq!(correction_ppb(dial, nominal), want, "{offset} µHz off");
+        }
+    }
+
+    #[test]
+    fn a_converging_loop_ends_on_the_total_correction() {
+        // A part 62 ppm fast, gated for one second against a perfect reference.
+        const CRYSTAL_PPB: i128 = 62_000;
+        let emit = |dial: Frequency| {
+            (dial.as_microhz() as i128 * (1_000_000_000 + CRYSTAL_PPB) / 1_000_000_000) as u64
+        };
+
+        let mut dial = NOMINAL;
+        for _ in 0..5 {
+            let ticks = (emit(dial) / 1_000_000) as u32;
+            let ppb = error_ppb(ticks, NOMINAL, 1);
+            assert!(plausible(ppb));
+
+            if ppb.abs() > 300 {
+                dial = correct(dial, ppb);
+            }
+        }
+
+        // The loop only ever saw what was left of the error at each step; the
+        // dial holds all of it. Here the first step took it under the 100 ppb
+        // the gate can resolve, so the later ones measured nothing to apply.
+        let total = correction_ppb(dial, NOMINAL);
+        assert_eq!(total, 62_000);
+
+        // And that is the number to carry to an output the counter never saw,
+        // good to `correct`'s linearisation residual of 54 mHz on 20 m.
+        let band = Frequency::from_hz(14_097_100);
+        let landed = emit(correct(band, total)) as i64 - band.as_microhz() as i64;
+        assert!(landed.abs() < 60_000, "{landed} µHz off");
+    }
 
     #[test]
     fn error_ppb_is_signed_and_scales_with_the_gate() {

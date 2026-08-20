@@ -50,6 +50,11 @@ test = false
 bench = false
 
 [[bin]]
+name = "example7"
+test = false
+bench = false
+
+[[bin]]
 name = "hw_checks"
 test = false
 bench = false

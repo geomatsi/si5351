@@ -6,6 +6,9 @@ which was abandoned on `embedded-hal` 0.2 / edition 2018.
 
 The driver is one file, `src/lib.rs`. Alongside it:
 
+- `src/calibrate.rs` — the `calibrate` module: a gated count in, a correction
+  for any output out. Pure arithmetic over `Frequency`, no I²C, so it is
+  useful without a part on the bus and testable on the host.
 - `src/tests.rs` — the unit tests, pulled in as `#[cfg(test)] mod tests;`. A
   child module rather than an integration test under `tests/`, because
   `approx_fraction` and the constants it is checked against are private. It
@@ -14,7 +17,9 @@ The driver is one file, `src/lib.rs`. Alongside it:
   directory. Firmware for an STM32F103 Blue Pill with an Si5351 breakout on
   PB8/PB9, matching the wiring in `ham-shack/tools/wspr-beacon--blue-pill`.
   Its `src/lib.rs` brings up the clock tree, I²C1 and the driver; the wiring
-  table lives in that file's header. Seven binaries — six teaching examples,
+  table lives in that file's header. It also carries `Gate`, the TIM2/TIM3
+  cascade that counts PB3 for `example7` — `init_with_gate` rather than `init`,
+  because freeing PB3 costs the JTAG pins. Eight binaries — seven teaching examples,
   built mostly on the same four easily measured frequencies (500 kHz, 5, 15
   and 50 MHz), and one bench tool:
   - `example1` — `set_frequency` on clk0, one call per frequency.
@@ -35,6 +40,13 @@ The driver is one file, `src/lib.rs`. Alongside it:
     `UNEXPECTED` line per flag. Needs no instrument — it answers over RTT. The
     two out-of-range cases are expectations from AN619's VCO range, not
     measured behaviour; an `UNEXPECTED` there is a result for `HW_CHECK.md`.
+  - `example7` — the calibration loop from [`si5351::calibrate`]: clk1 is
+    counted on PB3 over a one-second gate, `error_ppb`/`correct` close the
+    loop, and `correction_ppb` reports the total, which is then carried to
+    clk0 — an output the counter never saw. Needs one extra wire, clk1 to PB3,
+    and no instrument: it answers over RTT. The gate comes from the board's own
+    delay, so what it converges is the Si5351 crystal onto the Blue Pill's;
+    the number only means something once the gate is a GPS PPS.
   - `hw_checks` — a bench tool rather than a teaching example: the exact
     configurations in `examples/blue-pill/notes/HW_CHECK.md`, announced over
     RTT with what to look for. Its `ONLY` constant is `None` in the tree, which
